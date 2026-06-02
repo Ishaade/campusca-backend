@@ -6,6 +6,18 @@ function normalizeBool(value) {
   return Boolean(value);
 }
 
+function normalizeTrueFalseIndex(value) {
+  // App convention: 0 => True, 1 => False
+  if (typeof value === 'boolean') return value ? 0 : 1;
+  if (typeof value === 'number') return value === 0 ? 0 : 1;
+  if (typeof value === 'string') {
+    const raw = value.trim().toLowerCase();
+    if (raw === '0' || raw === 'true') return 0;
+    if (raw === '1' || raw === 'false') return 1;
+  }
+  return normalizeBool(value) ? 0 : 1;
+}
+
 function normalizeText(value) {
   if (value == null) return '';
   return String(value).trim().toLowerCase().replace(/\s+/g, ' ');
@@ -25,9 +37,9 @@ function scoreQuestion(question, answer) {
       };
     }
     case 'true-false': {
-      const expected = question.correctAnswer;
-      const provided = normalizeBool(answer.response);
-      const isCorrect = typeof expected === 'boolean' ? expected === provided : Number(expected) === Number(provided);
+      const expected = normalizeTrueFalseIndex(question.correctAnswer);
+      const provided = normalizeTrueFalseIndex(answer.response);
+      const isCorrect = expected === provided;
       return {
         earned: isCorrect ? Number(question.points) || 0 : 0,
         status: isCorrect ? 'correct' : 'incorrect'
