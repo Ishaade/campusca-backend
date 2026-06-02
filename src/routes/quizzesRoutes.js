@@ -21,7 +21,8 @@ const {
   submitAttempt,
   updateAttempt,
   listQuizAttempts,
-  getMyAttempts
+  getMyAttempts,
+  getAttemptDetails
 } = require('../controllers/quizzesController');
 
 const router = express.Router();
@@ -86,6 +87,14 @@ router.get(
   '/:quizId/attempts',
   validateRequest({ params: quizIdParamsSchema }),
   listQuizAttempts
+);
+
+// teacher: attempt detail (includes per-question scoring)
+router.get(
+  '/:quizId/attempts/:attemptId',
+  requireRole('teacher'),
+  validateRequest({ params: attemptParamsSchema }),
+  getAttemptDetails
 );
 
 // student: fetch logged-in student's attempts (all quizzes)

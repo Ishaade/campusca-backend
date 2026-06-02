@@ -192,6 +192,16 @@ async function startAttempt(req, res, next) {
     if (quiz.scheduled_start && now < new Date(quiz.scheduled_start)) throw new HttpError(400, 'Quiz has not started yet');
     if (quiz.scheduled_end && now > new Date(quiz.scheduled_end)) throw new HttpError(400, 'Quiz is no longer available');
 
+    // If there's already an in-progress attempt, reuse it (resume support)
+    const existingDrafts = await query(
+      'SELECT * FROM quiz_attempts WHERE quiz_id = ? AND student_id = ? AND status = ? ORDER BY started_at DESC LIMIT 1',
+      [quizId, req.user.id, 'in_progress']
+    );
+    const existingDraft = existingDrafts[0];
+    if (existingDraft) {
+      return res.status(200).json({ status: 'success', attempt: existingDraft, resumed: true });
+    }
+
     const attempts = await query('SELECT id, status FROM quiz_attempts WHERE quiz_id = ? AND student_id = ?', [quizId, req.user.id]);
     if (attempts.length >= quiz.attempts_allowed) throw new HttpError(400, 'No attempts remaining');
 
@@ -347,6 +357,85 @@ async function getMyAttempts(req, res, next) {
   }
 }
 
+async function getAttemptDetails(req, res, next) {
+  const { quizId, attemptId } = req.params;
+
+  try {
+    const quizRows = await query('SELECT * FROM quizzes WHERE id = ? LIMIT 1', [quizId]);
+    const quiz = quizRows[0];
+    if (!quiz) throw new HttpError(404, 'Quiz not found');
+    if (quiz.teacher_id !== req.user.id) throw new HttpError(403, 'Forbidden');
+
+    if (typeof quiz.questions === 'string') {
+      try { quiz.questions = JSON.parse(quiz.questions); } catch (e) { quiz.questions = []; }
+    }
+    if (!Array.isArray(quiz.questions)) quiz.questions = quiz.questions || [];
+
+    const attemptRows = await query(
+      `SELECT qa.*, u.name as student_name, u.email as student_email
+       FROM quiz_attempts qa
+       LEFT JOIN users u ON u.id = qa.student_id
+       WHERE qa.id = ? AND qa.quiz_id = ? LIMIT 1`,
+      [attemptId, quizId]
+    );
+    const attempt = attemptRows[0];
+    if (!attempt) throw new HttpError(404, 'Attempt not found');
+
+    let answers = attempt.answers;
+    if (typeof answers === 'string') {
+      try { answers = JSON.parse(answers); } catch (e) { answers = []; }
+    }
+    if (!Array.isArray(answers)) answers = [];
+
+    const scoring = scoreQuizAttempt(quiz, answers);
+
+    // enrich per-question info for UI
+    const byId = new Map(scoring.detailed.map(d => [String(d.questionId), d]));
+    const questionReview = (quiz.questions || []).map((q, index) => {
+      const qid = q.id != null ? String(q.id) : String(index);
+      const d = byId.get(qid) || { status: 'unanswered', earnedPoints: 0, response: null };
+      return {
+        questionId: qid,
+        question: q.question,
+        type: q.type,
+        options: q.options || null,
+        correctAnswer: q.correctAnswer,
+        points: q.points,
+        studentResponse: d.response,
+        earnedPoints: d.earnedPoints,
+        status: d.status
+      };
+    });
+
+    return res.json({
+      status: 'success',
+      quiz: {
+        id: quiz.id,
+        roomId: quiz.room_id,
+        title: quiz.title,
+        totalPoints: quiz.total_points
+      },
+      attempt: {
+        id: attempt.id,
+        studentId: attempt.student_id,
+        studentName: attempt.student_name,
+        studentEmail: attempt.student_email,
+        status: attempt.status,
+        score: attempt.score,
+        earnedPoints: attempt.earned_points,
+        totalPoints: attempt.total_points,
+        startedAt: attempt.started_at,
+        submittedAt: attempt.submitted_at,
+        elapsedSeconds: attempt.elapsed_seconds
+      },
+      scoring,
+      questionReview
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 module.exports = {
   createQuiz,
   listRoomQuizzes,
@@ -357,6 +446,7 @@ module.exports = {
   submitAttempt,
   updateAttempt,
   listQuizAttempts,
-  getMyAttempts
+  getMyAttempts,
+  getAttemptDetails
 };
 

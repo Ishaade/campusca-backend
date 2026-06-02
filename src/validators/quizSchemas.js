@@ -80,6 +80,7 @@ module.exports = {
   quizIdParamsSchema,
   startAttemptSchema,
   submitAttemptSchema,
+  updateAttemptSchema,
   attemptParamsSchema
 };
 

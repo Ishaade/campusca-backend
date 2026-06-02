@@ -1,11 +1,18 @@
 const express = require('express');
 const validateRequest = require('../middleware/validateRequest');
-const { registerSchema, loginSchema, changeStudentPasswordSchema } = require('../validators/authSchemas');
+const {
+  registerSchema,
+  loginSchema,
+  changeStudentPasswordSchema,
+  userIdParamsSchema,
+  adminSetPasswordSchema
+} = require('../validators/authSchemas');
 const {
   register,
   adminRegisterUser,
   adminListUsers,
   adminDeleteUser,
+  adminSetUserPassword,
   login,
   getProfile
 } = require('../controllers/authController');
@@ -30,14 +37,23 @@ router.post(
 );
 router.get('/admin/users', requireAuth, requireRole('admin'), adminListUsers);
 router.delete('/admin/users/:userId', requireAuth, requireRole('admin'), adminDeleteUser);
+router.post(
+  '/admin/users/:userId/set-password',
+  requireAuth,
+  requireRole('admin'),
+  validateRequest({ params: userIdParamsSchema, body: adminSetPasswordSchema }),
+  adminSetUserPassword
+);
 
 // Login endpoint with validation
 router.post('/login', validateRequest({ body: loginSchema }), login);
 
 // Student password change (no email; limited attempts)
-router.get('/student/password-change-info', getPasswordChangeInfo);
+router.get('/student/password-change-info', requireAuth, requireRole('student'), getPasswordChangeInfo);
 router.post(
   '/student/change-password',
+  requireAuth,
+  requireRole('student'),
   validateRequest({ body: changeStudentPasswordSchema }),
   changeStudentPassword
 );

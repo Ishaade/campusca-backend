@@ -6,12 +6,10 @@ const env = require('../config/env');
 const SALT_ROUNDS = 10;
 
 async function getPasswordChangeInfo(req, res, next) {
-  const { email } = req.query;
-
   try {
     const rows = await query(
-      'SELECT password_change_count FROM users WHERE email = ? AND role = ? LIMIT 1',
-      [email, 'student']
+      'SELECT password_change_count FROM users WHERE id = ? AND role = ? LIMIT 1',
+      [req.user.id, 'student']
     );
     const student = rows[0];
     if (!student) {
@@ -34,17 +32,22 @@ async function getPasswordChangeInfo(req, res, next) {
 }
 
 async function changeStudentPassword(req, res, next) {
-  const { email, password } = req.body;
+  const { currentPassword, newPassword } = req.body;
 
   try {
     const rows = await query(
-      'SELECT id, email, role, password_change_count FROM users WHERE email = ? AND role = ? LIMIT 1',
-      [email, 'student']
+      'SELECT id, email, role, password_hash, password_change_count FROM users WHERE id = ? AND role = ? LIMIT 1',
+      [req.user.id, 'student']
     );
     const student = rows[0];
 
     if (!student) {
       return res.status(404).json({ status: 'error', message: 'Student account not found' });
+    }
+
+    const currentMatch = await bcrypt.compare(currentPassword, student.password_hash || '');
+    if (!currentMatch) {
+      return next(new HttpError(401, 'Current password is incorrect'));
     }
 
     const used = Number(student.password_change_count || 0);
@@ -57,7 +60,7 @@ async function changeStudentPassword(req, res, next) {
       );
     }
 
-    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+    const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
     await query(
       'UPDATE users SET password_hash = ?, password_change_count = COALESCE(password_change_count, 0) + 1 WHERE id = ?',
       [passwordHash, student.id]
@@ -67,7 +70,7 @@ async function changeStudentPassword(req, res, next) {
 
     return res.status(200).json({
       status: 'success',
-      message: 'Password changed successfully. You can sign in with your new password.',
+      message: 'Password changed successfully.',
       remainingChanges: remaining
     });
   } catch (error) {

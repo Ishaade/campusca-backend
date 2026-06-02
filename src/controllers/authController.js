@@ -88,6 +88,27 @@ async function adminDeleteUser(req, res, next) {
   }
 }
 
+async function adminSetUserPassword(req, res, next) {
+  const { userId } = req.params;
+  const { newPassword } = req.body;
+
+  try {
+    const rows = await query('SELECT id, email, role FROM users WHERE id = ? LIMIT 1', [userId]);
+    const target = rows[0];
+    if (!target) {
+      return res.status(404).json({ status: 'error', message: 'User not found' });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    // Reset password_change_count so the user can change password again if needed
+    await query('UPDATE users SET password_hash = ?, password_change_count = 0 WHERE id = ?', [passwordHash, userId]);
+
+    return res.status(200).json({ status: 'success', message: `Password updated for ${target.email}` });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 async function login(req, res, next) {
   const { email, password } = req.body;
 
@@ -160,6 +181,7 @@ module.exports = {
   adminRegisterUser,
   adminListUsers,
   adminDeleteUser,
+  adminSetUserPassword,
   login,
   getProfile
 };
