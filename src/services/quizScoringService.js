@@ -6,6 +6,11 @@ function normalizeBool(value) {
   return Boolean(value);
 }
 
+function normalizeText(value) {
+  if (value == null) return '';
+  return String(value).trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
 function scoreQuestion(question, answer) {
   if (!answer) {
     return { earned: 0, status: 'unanswered' };
@@ -15,7 +20,7 @@ function scoreQuestion(question, answer) {
     case 'multiple-choice': {
       const isCorrect = Number(answer.response) === Number(question.correctAnswer);
       return {
-        earned: isCorrect ? question.points : 0,
+        earned: isCorrect ? Number(question.points) || 0 : 0,
         status: isCorrect ? 'correct' : 'incorrect'
       };
     }
@@ -24,16 +29,24 @@ function scoreQuestion(question, answer) {
       const provided = normalizeBool(answer.response);
       const isCorrect = typeof expected === 'boolean' ? expected === provided : Number(expected) === Number(provided);
       return {
-        earned: isCorrect ? question.points : 0,
+        earned: isCorrect ? Number(question.points) || 0 : 0,
         status: isCorrect ? 'correct' : 'incorrect'
       };
     }
     case 'short-answer':
-    default:
+    default: {
+      const provided = normalizeText(answer.response);
+      if (!provided) {
+        return { earned: 0, status: 'unanswered' };
+      }
+      const expectedRaw = question.correctAnswer || question.sampleAnswer || '';
+      const expected = normalizeText(expectedRaw);
+      const isCorrect = expected ? provided === expected : false;
       return {
-        earned: 0,
-        status: 'pending_review'
+        earned: isCorrect ? Number(question.points) || 0 : 0,
+        status: isCorrect ? 'correct' : 'incorrect'
       };
+    }
   }
 }
 

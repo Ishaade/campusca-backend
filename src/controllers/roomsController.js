@@ -23,6 +23,7 @@ function mapRoom(room, memberStats = [], quizStats = []) {
     subject: room.subject,
     code: room.code,
     teacherId: room.teacher_id,
+    teacherName: room.teacher_name || room.teacherName || null,
     maxStudents: room.max_students,
     allowSelfJoin: room.allow_self_join,
     requireApproval: room.require_approval,
@@ -78,9 +79,10 @@ async function listRooms(req, res, next) {
     }
 
     const memberships = await query(
-      `SELECT rm.id, rm.status, rm.joined_at, r.id as room_id, r.name, r.description, r.subject, r.code, r.max_students, r.allow_self_join, r.require_approval, r.created_at, r.updated_at, r.teacher_id
+      `SELECT rm.id, rm.status, rm.joined_at, r.id as room_id, r.name, r.description, r.subject, r.code, r.max_students, r.allow_self_join, r.require_approval, r.created_at, r.updated_at, r.teacher_id, u.name as teacher_name
        FROM room_members rm
        JOIN rooms r ON r.id = rm.room_id
+       LEFT JOIN users u ON u.id = r.teacher_id
        WHERE rm.student_id = ?`,
       [req.user.id]
     );
@@ -104,7 +106,8 @@ async function listRooms(req, res, next) {
             require_approval: record.require_approval,
             created_at: record.created_at,
             updated_at: record.updated_at,
-            teacher_id: record.teacher_id
+            teacher_id: record.teacher_id,
+            teacher_name: record.teacher_name
           },
           memberStats,
           quizStats
@@ -151,7 +154,13 @@ async function getRoom(req, res, next) {
   const { roomId } = req.params;
 
   try {
-    const rows = await query('SELECT * FROM rooms WHERE id = ? LIMIT 1', [roomId]);
+    const rows = await query(
+      `SELECT r.*, u.name as teacher_name
+       FROM rooms r
+       LEFT JOIN users u ON u.id = r.teacher_id
+       WHERE r.id = ? LIMIT 1`,
+      [roomId]
+    );
     const room = rows[0];
     if (!room) throw new HttpError(404, 'Room not found');
 
@@ -188,7 +197,13 @@ async function getRoomByCode(req, res, next) {
   const normalizedCode = code.trim().toUpperCase();
 
   try {
-    const rows = await query('SELECT * FROM rooms WHERE UPPER(code) = ? LIMIT 1', [normalizedCode]);
+    const rows = await query(
+      `SELECT r.*, u.name as teacher_name
+       FROM rooms r
+       LEFT JOIN users u ON u.id = r.teacher_id
+       WHERE UPPER(r.code) = ? LIMIT 1`,
+      [normalizedCode]
+    );
     const room = rows[0];
     if (!room) throw new HttpError(404, 'Room not found');
 
